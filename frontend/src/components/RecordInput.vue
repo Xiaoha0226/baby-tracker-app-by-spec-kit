@@ -1,0 +1,380 @@
+<template>
+  <div class="record-input">
+    <!-- 语音输入按钮 -->
+    <VoiceInputButton
+      :max-duration="60"
+      @record="handleVoiceRecord"
+      @error="handleVoiceError"
+    />
+
+    <!-- 识别结果预览 -->
+    <Transition name="slide-up">
+      <div v-if="showPreview" class="record-preview">
+        <div class="preview-header">
+          <span class="preview-title">识别结果</span>
+          <button class="close-btn" @click="closePreview">×</button>
+        </div>
+        
+        <div class="preview-content">
+          <div class="recognized-text">
+            <span class="label">识别文字：</span>
+            <span class="text">{{ recognizedText }}</span>
+          </div>
+          
+          <div class="parsed-result">
+            <div class="result-type" :style="{ backgroundColor: typeColor }">
+              <span class="emoji">{{ typeEmoji }}</span>
+              <span class="label">{{ typeLabel }}</span>
+            </div>
+            <div class="result-details">
+              {{ formattedDetails }}
+            </div>
+          </div>
+
+          <div v-if="confidence < 0.7" class="low-confidence-warning">
+            ⚠️ 识别置信度较低，请检查是否正确
+          </div>
+        </div>
+
+        <div class="preview-actions">
+          <button class="btn btn-secondary" @click="closePreview">取消</button>
+          <button class="btn btn-primary" :disabled="isSubmitting" @click="confirmRecord">
+            <span v-if="isSubmitting" class="spinner-small"></span>
+            <template v-else>确认保存</template>
+          </button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 成功提示 -->
+    <Transition name="fade">
+      <div v-if="showSuccess" class="success-toast">
+        <span class="success-icon">✓</span>
+        <span>记录已保存</span>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import VoiceInputButton from './VoiceInputButton.vue';
+import { processVoice } from '@/services/ai';
+import { 
+  type RecordType, 
+  getRecordTypeLabel, 
+  getRecordTypeEmoji, 
+  getRecordTypeColor,
+  formatRecordDetails,
+} from '@/services/records';
+
+interface Emits {
+  (e: 'success'): void;
+}
+
+const emit = defineEmits<Emits>();
+
+const showPreview = ref(false);
+const showSuccess = ref(false);
+const isSubmitting = ref(false);
+const recognizedText = ref('');
+const parsedType = ref<RecordType>('other');
+const parsedDetails = ref<Record<string, any>>({});
+const parsedTime = ref('');
+const confidence = ref(1);
+
+const typeLabel = computed(() => getRecordTypeLabel(parsedType.value));
+const typeEmoji = computed(() => getRecordTypeEmoji(parsedType.value));
+const typeColor = computed(() => getRecordTypeColor(parsedType.value));
+const formattedDetails = computed(() => formatRecordDetails(parsedType.value, parsedDetails.value));
+
+// 处理语音录制完成
+async function handleVoiceRecord(audioBlob: Blob) {
+  try {
+    const result = await processVoice(audioBlob);
+    
+    if (result.success && result.data) {
+      recognizedText.value = result.data.raw_text;
+      parsedType.value = result.data.record.record_type;
+      parsedDetails.value = result.data.record.details;
+      parsedTime.value = result.data.record.record_time;
+      confidence.value = result.data.confidence;
+      showPreview.value = true;
+    } else {
+      // 识别失败但可能有部分数据
+      if (result.data) {
+        recognizedText.value = result.data.raw_text || '';
+        parsedType.value = result.data.record?.record_type || 'other';
+        parsedDetails.value = result.data.record?.details || {};
+        confidence.value = result.data.confidence || 0;
+        showPreview.value = true;
+      }
+    }
+  } catch (error) {
+    alert('语音处理失败，请重试');
+  }
+}
+
+// 处理语音错误
+function handleVoiceError(message: string) {
+  alert(message);
+}
+
+// 关闭预览
+function closePreview() {
+  showPreview.value = false;
+  recognizedText.value = '';
+  parsedType.value = 'other';
+  parsedDetails.value = {};
+  parsedTime.value = '';
+  confidence.value = 1;
+}
+
+// 确认保存记录
+async function confirmRecord() {
+  isSubmitting.value = true;
+  
+  try {
+    // 记录已经在后端创建，这里只是关闭预览并显示成功
+    showPreview.value = false;
+    showSuccess.value = true;
+    
+    setTimeout(() => {
+      showSuccess.value = false;
+    }, 2000);
+    
+    emit('success');
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+</script>
+
+<style scoped>
+.record-input {
+  padding: var(--spacing-lg);
+}
+
+/* 预览面板 */
+.record-preview {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.preview-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: var(--background-color);
+}
+
+.preview-content {
+  padding: var(--spacing-lg);
+}
+
+.recognized-text {
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--background-color);
+  border-radius: var(--radius-md);
+}
+
+.recognized-text .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recognized-text .text {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-left: var(--spacing-xs);
+}
+
+.parsed-result {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--background-color);
+  border-radius: var(--radius-md);
+}
+
+.result-type {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  min-width: 60px;
+}
+
+.result-type .emoji {
+  font-size: 24px;
+}
+
+.result-type .label {
+  font-size: 12px;
+  color: white;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.result-details {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.low-confidence-warning {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: #856404;
+}
+
+.preview-actions {
+  display: flex;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+  border-top: 1px solid var(--border-color);
+}
+
+.preview-actions .btn {
+  flex: 1;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+}
+
+.btn-secondary {
+  background: var(--background-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--border-color);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  border: none;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* 成功提示 */
+.success-toast {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  z-index: 1000;
+}
+
+.success-icon {
+  width: 20px;
+  height: 20px;
+  background: #4CAF50;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* 动画 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
