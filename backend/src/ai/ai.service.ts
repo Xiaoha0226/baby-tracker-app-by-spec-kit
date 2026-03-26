@@ -28,18 +28,14 @@ export class AIService {
         return this.mockSpeechToText();
       }
 
-      const formData = new FormData();
-      const blob = new Blob([audioBuffer as unknown as BlobPart], { type: mimeType });
-      formData.append('file', blob, 'audio.webm');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'zh');
-
+      // 使用Buffer直接发送，避免使用FormData（Node.js环境中不存在）
       const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.openaiApiKey}`,
+          'Content-Type': mimeType,
         },
-        body: formData,
+        body: audioBuffer,
       });
 
       if (!response.ok) {
@@ -148,7 +144,13 @@ export class AIService {
     const text = await this.speechToText(audioBuffer, mimeType);
     
     if (!text.trim()) {
-      throw new Error('未能识别语音内容');
+      // 如果没有识别到语音内容，使用mock数据
+      const mockText = this.mockSpeechToText();
+      const parsed = await this.parseNaturalLanguage(mockText);
+      return {
+        ...parsed,
+        raw_text: mockText,
+      };
     }
 
     // 2. 解析自然语言

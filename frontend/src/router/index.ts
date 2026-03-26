@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,17 +33,23 @@ const router = createRouter({
       component: () => import('@/views/StatsView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/profile',
+      name: 'Profile',
+      component: () => import('@/views/ProfileView.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 
 // Navigation guard
 router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
-  const isAuthenticated = authStore.isAuthenticated || localStorage.getItem('access_token')
+  // 直接从 localStorage 检查 token，避免在路由守卫中使用 Pinia store
+  const hasToken = !!localStorage.getItem('access_token')
 
-  if (to.meta.requiresAuth && !isAuthenticated) {
+  if (to.meta.requiresAuth && !hasToken) {
     next('/login')
-  } else if (to.meta.public && isAuthenticated) {
+  } else if (to.meta.public && hasToken) {
     next('/')
   } else {
     next()

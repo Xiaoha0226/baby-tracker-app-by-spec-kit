@@ -11,6 +11,7 @@ interface FindAllOptions {
   type?: RecordType;
   startDate?: Date;
   endDate?: Date;
+  sortOrder?: 'asc' | 'desc';
 }
 
 @Injectable()
@@ -34,12 +35,12 @@ export class RecordsService {
   }
 
   async findAll(options: FindAllOptions) {
-    const { userId, page = 1, limit = 20, type, startDate, endDate } = options;
+    const { userId, page = 1, limit = 20, type, startDate, endDate, sortOrder = 'desc' } = options;
 
     const queryBuilder = this.recordRepository
       .createQueryBuilder('record')
       .where('record.userId = :userId', { userId })
-      .orderBy('record.recordTime', 'DESC')
+      .orderBy('record.recordTime', sortOrder.toUpperCase() as 'ASC' | 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 

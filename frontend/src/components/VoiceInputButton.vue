@@ -1,18 +1,14 @@
 <template>
   <div class="voice-input-wrapper">
-    <!-- 录音按钮 -->
     <button
       class="voice-button"
-      :class="{
-        'is-recording': isRecording,
-        'is-processing': isProcessing,
-      }"
-      :disabled="!canRecord && !isRecording"
-      @touchstart.prevent="handleTouchStart"
-      @touchend.prevent="handleTouchEnd"
-      @mousedown="handleMouseDown"
-      @mouseup="handleMouseUp"
-      @mouseleave="handleMouseLeave"
+      :class="{ 'is-recording': isRecording }"
+      @touchstart="onTouchStart"
+      @touchend="onTouchEnd"
+      @touchcancel="onTouchCancel"
+      @mousedown="onMouseDown"
+      @mouseup="onMouseUp"
+      @mouseleave="onMouseLeave"
     >
       <div class="voice-button__inner">
         <span v-if="isRecording" class="recording-icon">
@@ -20,26 +16,16 @@
           <span class="recording-wave"></span>
           <span class="recording-wave"></span>
         </span>
-        <span v-else-if="isProcessing" class="processing-icon">
-          <span class="spinner"></span>
-        </span>
         <span v-else class="microphone-icon">🎤</span>
       </div>
-      
-      <!-- 录音时长 -->
-      <span v-if="isRecording" class="recording-time">
-        {{ formatDuration }}
-      </span>
+      <span v-if="isRecording" class="recording-time">{{ formatDuration }}</span>
     </button>
 
-    <!-- 录音提示文字 -->
     <p class="voice-hint">
       <template v-if="isRecording">松开结束录音</template>
-      <template v-else-if="isProcessing">正在识别...</template>
       <template v-else>按住说话</template>
     </p>
 
-    <!-- 录音中遮罩和动画 -->
     <Transition name="fade">
       <div v-if="isRecording" class="recording-overlay">
         <div class="recording-dialog">
@@ -57,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { useVoiceRecorder, RecordingState } from '@/composables/useVoiceRecorder';
+import { useVoiceRecorder } from '@/composables/useVoiceRecorder';
 
 interface Props {
   maxDuration?: number;
@@ -75,58 +61,48 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>();
 
 const {
-  state,
   isRecording,
-  isProcessing,
   canRecord,
   formatDuration,
   startRecording,
   stopRecording,
-  cancelRecording,
 } = useVoiceRecorder({
   maxDuration: props.maxDuration,
   onError: (message) => emit('error', message),
+  onRecordComplete: (audioBlob) => emit('record', audioBlob),
 });
 
-// 触摸/鼠标事件处理
-let isPressed = false;
-
-function handleTouchStart() {
+function onTouchStart(event: TouchEvent) {
   if (!canRecord.value) return;
-  isPressed = true;
   startRecording();
 }
 
-function handleTouchEnd() {
-  if (!isPressed) return;
-  isPressed = false;
-  
-  const audioBlob = stopRecording();
-  if (audioBlob) {
-    emit('record', audioBlob);
+function onTouchEnd(event: TouchEvent) {
+  if (isRecording.value) {
+    stopRecording();
   }
 }
 
-function handleMouseDown() {
+function onTouchCancel(event: TouchEvent) {
+  if (isRecording.value) {
+    stopRecording();
+  }
+}
+
+function onMouseDown(event: MouseEvent) {
   if (!canRecord.value) return;
-  isPressed = true;
   startRecording();
 }
 
-function handleMouseUp() {
-  if (!isPressed) return;
-  isPressed = false;
-  
-  const audioBlob = stopRecording();
-  if (audioBlob) {
-    emit('record', audioBlob);
+function onMouseUp(event: MouseEvent) {
+  if (isRecording.value) {
+    stopRecording();
   }
 }
 
-function handleMouseLeave() {
-  if (isPressed) {
-    isPressed = false;
-    cancelRecording();
+function onMouseLeave(event: MouseEvent) {
+  if (isRecording.value) {
+    stopRecording();
   }
 }
 </script>
@@ -155,7 +131,7 @@ function handleMouseLeave() {
   justify-content: center;
 }
 
-.voice-button:active:not(:disabled) {
+.voice-button:active {
   transform: scale(0.95);
 }
 
@@ -164,25 +140,11 @@ function handleMouseLeave() {
   animation: pulse 1s infinite;
 }
 
-.voice-button.is-processing {
-  background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-  cursor: not-allowed;
-}
-
-.voice-button:disabled:not(.is-recording):not(.is-processing) {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .voice-button__inner {
   font-size: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.microphone-icon {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
 .recording-icon {
@@ -215,28 +177,12 @@ function handleMouseLeave() {
   font-family: monospace;
 }
 
-.processing-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
 .voice-hint {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
 }
 
-/* 录音中遮罩 */
 .recording-overlay {
   position: fixed;
   top: 0;
@@ -290,7 +236,6 @@ function handleMouseLeave() {
   margin: 0;
 }
 
-/* 动画 */
 @keyframes pulse {
   0%, 100% {
     box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
@@ -309,12 +254,6 @@ function handleMouseLeave() {
   }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes sound-wave {
   0%, 100% {
     height: 10px;
@@ -324,7 +263,6 @@ function handleMouseLeave() {
   }
 }
 
-/* 过渡动画 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;

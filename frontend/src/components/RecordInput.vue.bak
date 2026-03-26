@@ -97,58 +97,21 @@ async function handleVoiceRecord(audioBlob: Blob) {
     console.log('[RecordInput] result.data:', result.data);
     console.log('[RecordInput] result.data keys:', result.data ? Object.keys(result.data) : 'no data');
     console.log('[RecordInput] result.data.record:', result.data?.record);
-    console.log('[RecordInput] result.data.parsed:', result.data?.parsed);
-    console.log('[RecordInput] result:', JSON.stringify(result, null, 2));
     
-    if (result.success && result.data) {
-      // 直接从result.data中提取字段，不依赖record或parsed
-      if (result.data.record_type && result.data.record_time) {
-        // 数据直接在data中
-        recognizedText.value = result.data.raw_text || '';
-        parsedType.value = result.data.record_type;
-        parsedDetails.value = result.data.details || {};
-        parsedTime.value = result.data.record_time;
-        confidence.value = result.data.confidence || 0.8;
-        showPreview.value = true;
-      } else if (result.data.record) {
-        // 有完整记录（置信度足够）
-        recognizedText.value = result.data.raw_text || '';
-        parsedType.value = result.data.record.record_type;
-        parsedDetails.value = result.data.record.details || {};
-        parsedTime.value = result.data.record.record_time;
-        confidence.value = result.data.confidence || 0.8;
-        showPreview.value = true;
-      } else if (result.data.parsed) {
-        // 只有解析结果（置信度较低）
-        recognizedText.value = result.data.raw_text || '';
-        parsedType.value = result.data.parsed.record_type;
-        parsedDetails.value = result.data.parsed.details || {};
-        parsedTime.value = new Date().toISOString();
-        confidence.value = result.data.confidence || 0.5;
-        showPreview.value = true;
-      } else {
-        // 尝试使用mock数据
-        recognizedText.value = '宝宝喝了150毫升奶粉';
-        parsedType.value = 'feeding';
-        parsedDetails.value = { milk_type: 'formula', amount_ml: 150 };
-        parsedTime.value = new Date().toISOString();
-        confidence.value = 0.9;
-        showPreview.value = true;
-      }
-    } else if (result.data) {
-      // 虽然success为false，但有数据（如置信度低的情况）
-      if (result.data.parsed) {
-        recognizedText.value = result.data.raw_text || '';
-        parsedType.value = result.data.parsed.record_type;
-        parsedDetails.value = result.data.parsed.details || {};
-        parsedTime.value = new Date().toISOString();
-        confidence.value = result.data.confidence || 0.5;
-        showPreview.value = true;
-      } else {
-        throw new Error(result.message || '语音处理失败');
-      }
+    // result 是 { success, message, data: { record, raw_text, confidence } }
+    if (result.success && result.data && result.data.record) {
+      recognizedText.value = result.data.raw_text;
+      parsedType.value = result.data.record.record_type;
+      parsedDetails.value = result.data.record.details;
+      parsedTime.value = result.data.record.record_time;
+      confidence.value = result.data.confidence;
+      showPreview.value = true;
     } else {
-      throw new Error(result.message || '语音处理失败');
+      console.error('[RecordInput] Invalid result format:', result);
+      console.error('[RecordInput] result.success:', result.success);
+      console.error('[RecordInput] Has result.data:', !!result.data);
+      console.error('[RecordInput] Has result.data.record:', !!result.data?.record);
+      throw new Error('识别结果格式错误');
     }
   } catch (error) {
     console.error('语音处理失败:', error);

@@ -144,12 +144,13 @@ async function loadRecentRecords() {
       limit: 5,
       startDate: today,
     });
-    recentRecords.value = response.items;
+    recentRecords.value = response.items || [];
     
     // 计算今日统计
-    calculateTodayStats(response.items);
+    calculateTodayStats(response.items || []);
   } catch (error) {
     console.error('加载记录失败:', error);
+    recentRecords.value = [];
   } finally {
     loading.value = false;
   }

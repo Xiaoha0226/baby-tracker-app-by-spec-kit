@@ -11,7 +11,7 @@ export interface ParsedRecord {
 export interface VoiceProcessResult {
   success: boolean;
   message: string;
-  data?: {
+  data: {
     record: {
       id: number;
       record_type: RecordType;
@@ -24,11 +24,8 @@ export interface VoiceProcessResult {
   };
 }
 
-export interface ParseTextResult {
-  success: boolean;
-  message?: string;
-  data?: ParsedRecord;
-}
+// ParseText 返回的是 ParsedRecord 直接
+export type ParseTextResult = ParsedRecord;
 
 /**
  * 上传语音文件创建记录
@@ -43,7 +40,22 @@ export async function processVoice(audioBlob: Blob): Promise<VoiceProcessResult>
     },
   });
 
-  return response.data;
+  console.log('[ai.ts] Full response:', response);
+  console.log('[ai.ts] response.data:', response.data);
+  console.log('[ai.ts] response.data.success:', response.data.success);
+  console.log('[ai.ts] response.data.data:', response.data.data);
+
+  // 处理嵌套的响应格式
+  let result = response.data;
+  // 如果response.data.data存在，说明是嵌套格式
+  if (result.data && typeof result.data === 'object') {
+    result = result.data;
+  }
+
+  if (!result.success) {
+    throw new Error(result.message || '语音处理失败');
+  }
+  return result;
 }
 
 /**
@@ -51,5 +63,9 @@ export async function processVoice(audioBlob: Blob): Promise<VoiceProcessResult>
  */
 export async function parseText(text: string): Promise<ParseTextResult> {
   const response = await api.post('/ai/parse', { text });
-  return response.data;
+  // 后端返回格式: { success: true, data: {...} }
+  if (!response.data.success) {
+    throw new Error(response.data.message || '文本解析失败');
+  }
+  return response.data.data;
 }

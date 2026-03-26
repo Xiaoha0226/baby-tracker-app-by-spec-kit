@@ -10,9 +10,11 @@ import {
   ParseIntPipe,
   UseGuards,
   Request,
+  ValidationPipe,
 } from '@nestjs/common';
 import { RecordsService } from './records.service';
 import { CreateRecordDto } from './dto/create-record.dto';
+import { RecordFilterDto } from './dto/record-filter.dto';
 import { RecordType } from './entities/baby-record.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -38,22 +40,20 @@ export class RecordsController {
   @ApiQuery({ name: 'type', required: false, enum: RecordType, description: '记录类型' })
   @ApiQuery({ name: 'startDate', required: false, description: '开始日期 (YYYY-MM-DD)' })
   @ApiQuery({ name: 'endDate', required: false, description: '结束日期 (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'], description: '排序方式' })
   async findAll(
     @Request() req,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('type') type?: RecordType,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query(new ValidationPipe({ transform: true, whitelist: true })) filterDto: RecordFilterDto,
   ) {
     const userId = req.user.userId;
     return this.recordsService.findAll({
       userId,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
-      type,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
+      page: filterDto.page,
+      limit: filterDto.limit,
+      type: filterDto.type,
+      startDate: filterDto.startDate ? new Date(filterDto.startDate) : undefined,
+      endDate: filterDto.endDate ? new Date(filterDto.endDate) : undefined,
+      sortOrder: filterDto.sortOrder,
     });
   }
 

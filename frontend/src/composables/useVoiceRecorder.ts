@@ -2,129 +2,155 @@ import { ref, computed } from 'vue';
 
 export enum RecordingState {
   IDLE = 'idle',
-  REQUESTING = 'requesting',
   RECORDING = 'recording',
-  PROCESSING = 'processing',
 }
 
 export interface UseVoiceRecorderOptions {
-  maxDuration?: number; // 最大录音时长（秒）
+  maxDuration?: number;
   onError?: (error: string) => void;
+  onRecordComplete?: (audioBlob: Blob) => void;
 }
 
 export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
-  const { maxDuration = 60, onError } = options;
+  const { maxDuration = 60, onError, onRecordComplete } = options;
 
   const state = ref<RecordingState>(RecordingState.IDLE);
   const mediaRecorder = ref<MediaRecorder | null>(null);
   const audioChunks = ref<Blob[]>([]);
   const recordingDuration = ref(0);
   const recordingTimer = ref<number | null>(null);
+  const stream = ref<MediaStream | null>(null);
 
   const isRecording = computed(() => state.value === RecordingState.RECORDING);
-  const isProcessing = computed(() => state.value === RecordingState.PROCESSING);
   const canRecord = computed(() => state.value === RecordingState.IDLE);
 
-  // 开始录音
   async function startRecording(): Promise<void> {
-    if (state.value !== RecordingState.IDLE) return;
+    console.log('[useVoiceRecorder] startRecording called, state:', state.value);
+    
+    if (state.value !== RecordingState.IDLE) {
+      console.log('[useVoiceRecorder] not in IDLE state, returning');
+      return;
+    }
 
     try {
-      state.value = RecordingState.REQUESTING;
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('[useVoiceRecorder] got media stream');
+      stream.value = mediaStream;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // 检测支持的 MIME 类型
       const mimeType = getSupportedMimeType();
-      
-      mediaRecorder.value = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(mediaStream, { mimeType });
+      mediaRecorder.value = recorder;
       audioChunks.value = [];
 
-      mediaRecorder.value.ondataavailable = (event) => {
+      recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunks.value.push(event.data);
         }
       };
 
-      mediaRecorder.value.onstop = () => {
-        // 停止所有音轨
-        stream.getTracks().forEach(track => track.stop());
+      recorder.onstop = () => {
+        console.log('[useVoiceRecorder] recorder onstop triggered');
+        if (stream.value) {
+          stream.value.getTracks().forEach(track => track.stop());
+          stream.value = null;
+        }
+
+        if (onRecordComplete) {
+          if (audioChunks.value.length > 0) {
+            const type = recorder.mimeType || 'audio/webm';
+            const blob = new Blob(audioChunks.value, { type });
+            console.log('[useVoiceRecorder] calling onRecordComplete with blob size:', blob.size);
+            onRecordComplete(blob);
+          } else {
+            // 即使没有数据，也调用回调以避免UI卡住
+            console.log('[useVoiceRecorder] no audio chunks, creating empty blob');
+            const blob = new Blob([], { type: 'audio/webm' });
+            onRecordComplete(blob);
+          }
+        }
+
+        audioChunks.value = [];
+        recordingDuration.value = 0;
+        state.value = RecordingState.IDLE;
+        mediaRecorder.value = null;
       };
 
-      mediaRecorder.value.onerror = () => {
-        handleError('录音出现错误');
+      recorder.onerror = (error) => {
+        console.error('[useVoiceRecorder] recorder error:', error);
+        cleanup();
+        if (onError) {
+          onError('录音出现错误');
+        }
       };
 
-      mediaRecorder.value.start(100); // 每100ms收集一次数据
+      recorder.start(100);
+      console.log('[useVoiceRecorder] recorder started, state:', recorder.state);
       state.value = RecordingState.RECORDING;
-      
-      // 开始计时
+
       recordingDuration.value = 0;
       recordingTimer.value = window.setInterval(() => {
         recordingDuration.value++;
-        
-        // 达到最大时长自动停止
         if (recordingDuration.value >= maxDuration) {
           stopRecording();
         }
       }, 1000);
-
     } catch (error) {
-      handleError(getErrorMessage(error));
+      console.error('[useVoiceRecorder] startRecording error:', error);
+      cleanup();
+      const message = error instanceof DOMException ? getErrorMessage(error) : '录音初始化失败';
+      if (onError) {
+        onError(message);
+      }
     }
   }
 
-  // 停止录音
-  function stopRecording(): Blob | null {
-    if (!mediaRecorder.value || state.value !== RecordingState.RECORDING) {
-      return null;
-    }
-
-    // 清除计时器
-    if (recordingTimer.value) {
-      clearInterval(recordingTimer.value);
-      recordingTimer.value = null;
-    }
-
-    mediaRecorder.value.stop();
-    state.value = RecordingState.IDLE;
-
-    // 合并音频数据
-    if (audioChunks.value.length > 0) {
-      const mimeType = mediaRecorder.value.mimeType;
-      const audioBlob = new Blob(audioChunks.value, { type: mimeType });
-      return audioBlob;
-    }
-
-    return null;
-  }
-
-  // 取消录音
-  function cancelRecording(): void {
-    if (!mediaRecorder.value) return;
-
-    // 清除计时器
-    if (recordingTimer.value) {
-      clearInterval(recordingTimer.value);
-      recordingTimer.value = null;
-    }
-
-    // 停止录音但不返回数据
-    mediaRecorder.value.ondataavailable = null;
-    mediaRecorder.value.stop();
+  function stopRecording(): void {
+    console.log('[useVoiceRecorder] stopRecording called, state:', state.value, 'hasRecorder:', !!mediaRecorder.value);
     
-    // 停止所有音轨
-    if (mediaRecorder.value.stream) {
-      mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
+    if (!mediaRecorder.value || state.value !== RecordingState.RECORDING) {
+      console.log('[useVoiceRecorder] stopRecording: not recording, returning');
+      return;
+    }
+
+    if (recordingTimer.value) {
+      clearInterval(recordingTimer.value);
+      recordingTimer.value = null;
+    }
+
+    console.log('[useVoiceRecorder] stopping recorder, state:', mediaRecorder.value.state);
+    mediaRecorder.value.stop();
+  }
+
+  function cancelRecording(): void {
+    cleanup();
+  }
+
+  function cleanup(): void {
+    if (recordingTimer.value) {
+      clearInterval(recordingTimer.value);
+      recordingTimer.value = null;
+    }
+
+    if (stream.value) {
+      stream.value.getTracks().forEach(track => track.stop());
+      stream.value = null;
+    }
+
+    if (mediaRecorder.value) {
+      mediaRecorder.value.ondataavailable = null;
+      mediaRecorder.value.onstop = null;
+      mediaRecorder.value.onerror = null;
+      if (mediaRecorder.value.state !== 'inactive') {
+        mediaRecorder.value.stop();
+      }
+      mediaRecorder.value = null;
     }
 
     audioChunks.value = [];
     recordingDuration.value = 0;
     state.value = RecordingState.IDLE;
-    mediaRecorder.value = null;
   }
 
-  // 获取支持的 MIME 类型
   function getSupportedMimeType(): string {
     const types = [
       'audio/webm;codecs=opus',
@@ -145,49 +171,20 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
     return 'audio/webm';
   }
 
-  // 处理错误
-  function handleError(message: string): void {
-    state.value = RecordingState.IDLE;
-    
-    // 清除计时器
-    if (recordingTimer.value) {
-      clearInterval(recordingTimer.value);
-      recordingTimer.value = null;
-    }
-
-    // 停止所有音轨
-    if (mediaRecorder.value?.stream) {
-      mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
-    }
-
-    mediaRecorder.value = null;
-    audioChunks.value = [];
-    recordingDuration.value = 0;
-
-    if (onError) {
-      onError(message);
+  function getErrorMessage(error: DOMException): string {
+    switch (error.name) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        return '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风';
+      case 'NotFoundError':
+        return '未找到麦克风设备';
+      case 'NotReadableError':
+        return '麦克风被其他应用占用';
+      default:
+        return `录音错误: ${error.message}`;
     }
   }
 
-  // 获取错误信息
-  function getErrorMessage(error: unknown): string {
-    if (error instanceof DOMException) {
-      switch (error.name) {
-        case 'NotAllowedError':
-        case 'PermissionDeniedError':
-          return '麦克风权限被拒绝，请在浏览器设置中允许访问麦克风';
-        case 'NotFoundError':
-          return '未找到麦克风设备';
-        case 'NotReadableError':
-          return '麦克风被其他应用占用';
-        default:
-          return `录音错误: ${error.message}`;
-      }
-    }
-    return '录音初始化失败';
-  }
-
-  // 格式化时长显示
   function formatDuration(seconds: number): string {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -197,7 +194,6 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   return {
     state,
     isRecording,
-    isProcessing,
     canRecord,
     recordingDuration,
     formatDuration: computed(() => formatDuration(recordingDuration.value)),

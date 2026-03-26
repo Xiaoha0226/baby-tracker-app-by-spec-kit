@@ -57,7 +57,11 @@ export async function getRecords(query: RecordsQuery = {}): Promise<RecordsRespo
   if (query.endDate) params.append('endDate', query.endDate);
 
   const response = await api.get(`/records?${params.toString()}`);
-  return response.data;
+  // 后端返回格式: { success: true, data: { items: [], pagination: {} } }
+  if (!response.data.success) {
+    throw new Error(response.data.message || '获取记录列表失败');
+  }
+  return response.data.data;
 }
 
 /**
@@ -65,7 +69,10 @@ export async function getRecords(query: RecordsQuery = {}): Promise<RecordsRespo
  */
 export async function getRecord(id: number): Promise<RecordItem> {
   const response = await api.get(`/records/${id}`);
-  return response.data;
+  if (!response.data.success) {
+    throw new Error(response.data.message || '获取记录详情失败');
+  }
+  return response.data.data;
 }
 
 /**
@@ -73,7 +80,10 @@ export async function getRecord(id: number): Promise<RecordItem> {
  */
 export async function createRecord(data: CreateRecordData): Promise<RecordItem> {
   const response = await api.post('/records', data);
-  return response.data;
+  if (!response.data.success) {
+    throw new Error(response.data.message || '创建记录失败');
+  }
+  return response.data.data;
 }
 
 /**
@@ -81,7 +91,10 @@ export async function createRecord(data: CreateRecordData): Promise<RecordItem> 
  */
 export async function updateRecord(id: number, data: Partial<CreateRecordData>): Promise<RecordItem> {
   const response = await api.patch(`/records/${id}`, data);
-  return response.data;
+  if (!response.data.success) {
+    throw new Error(response.data.message || '更新记录失败');
+  }
+  return response.data.data;
 }
 
 /**
@@ -89,7 +102,10 @@ export async function updateRecord(id: number, data: Partial<CreateRecordData>):
  */
 export async function deleteRecord(id: number): Promise<{ message: string }> {
   const response = await api.delete(`/records/${id}`);
-  return response.data;
+  if (!response.data.success) {
+    throw new Error(response.data.message || '删除记录失败');
+  }
+  return response.data.data;
 }
 
 /**

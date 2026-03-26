@@ -1,13 +1,13 @@
 <template>
-  <div class="records-view">
+  <div class="stats-view">
     <header class="page-header">
-      <h1>📝 记录列表</h1>
-      <p>查看所有宝宝记录</p>
+      <h1>📊 数据统计</h1>
+      <p>查看宝宝的成长数据</p>
     </header>
     
     <div class="placeholder">
-      <span class="emoji">📋</span>
-      <p>记录列表功能开发中...</p>
+      <span class="emoji">📈</span>
+      <p>统计功能开发中...</p>
     </div>
 
     <!-- 底部导航 -->
@@ -16,11 +16,11 @@
         <span class="nav-icon">🏠</span>
         <span class="nav-label">首页</span>
       </router-link>
-      <router-link to="/records" class="nav-item active">
+      <router-link to="/records" class="nav-item">
         <span class="nav-icon">📝</span>
         <span class="nav-label">记录</span>
       </router-link>
-      <router-link to="/stats" class="nav-item">
+      <router-link to="/stats" class="nav-item active">
         <span class="nav-icon">📊</span>
         <span class="nav-label">统计</span>
       </router-link>
@@ -33,7 +33,7 @@
 </template>
 
 <style scoped>
-.records-view {
+.stats-view {
   min-height: 100vh;
   padding-bottom: 80px;
   background: linear-gradient(180deg, #FFF5F7 0%, #FFFFFF 100%);
@@ -97,7 +97,7 @@
 }
 
 .nav-item.active,
-  .nav-item:hover {
+.nav-item:hover {
   color: var(--primary-color);
 }
 
